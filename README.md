@@ -1,12 +1,13 @@
 # Makaper
 A mini macro language for common AmigaOS tasks such as file processing and conversions. Accompanied by a "unit" test source.
 
-* Fewer lines of more readable code for common, dull tasks.
+* No dependencies
 * Does not add any code/modify the binary unless a function is used.
+* Fewer lines of more readable code for common, dull tasks.
 * Reasonably (size) optimized code.
 * Moderate sanity check on parameters e.g. 0-check on MAK_FREE, MAK_CLOSELIBS.
 
-## Example usage
+## Gist
 
     INCLUDE "Makaper.S"
     MAK_INIT
