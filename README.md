@@ -7,7 +7,7 @@ A mini macro language for common AmigaOS tasks such as file processing and conve
 * Fewer lines of more readable code for common, dull tasks.
 * Reasonably (size) optimized code.
 * Moderate sanity check on parameters e.g. 0-check on MAK_FREE, MAK_CLOSELIBS to have a common program exit, preventing deallocating and closing resources twice.
-* Written so that, if the language is extended in the same vein using no dependencies, any branch can be merged without conflict, and still serve as a single include that adds the functionality of all the branched language, while still adding no code to the binary unless used.
+* Written so that, if the language is extended in the same vein using no dependencies, any branch can be merged without conflict, and still serve as a single include that adds the functionality of all the branched languages (while still adding no code to the binary unless used).
 
 ## Gist
 
