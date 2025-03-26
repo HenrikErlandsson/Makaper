@@ -1,0 +1,16 @@
+** Starting tests...
+
+File Contents x 2: Hello, World!
+Hello, World!
+
+14
+$0000013A
+4294967295
+0D
+test.txt
+test.txt
+Alloc 1K OK.
+Alloc 1K OK.
+String match with length: 0000000004
+String not found, OK.
+** Tests concluded.

@@ -7,6 +7,7 @@
 	*-----------------------------------------------+
 	; by Photon of Scoopex © 2025 Henrik Erlandsson	|
 	*=========#=====================================#
+	; 1.2:	  | Size opti & improve NUMDECf		|
 	; 1.1:	  | Refactor, bugfix WRITEF, added COPYS|
 	*---------+-------------------------------------*
 	; Notes: /
@@ -790,64 +791,46 @@ MAK_ND:SET 1
 	bsr.s MAK_NUMDECf
 	bra.w MAK_NDs
 MAK_NUMDECf:
-	MOVEM.L D2-D5/A2,-(SP)		;d0=Value.L,a1=destaddr
+	MOVEM.L D4-D6/A2,-(SP)		;d0=Value.L,a1=destaddr
 	moveq #0,d3			;1st-non0-reg
 	moveq #"0",d4			;constant
+	moveq #9,d6			;constant
 	lea MAK_DecTbl-R(a5),a2		;a1=temp.addr,1st-non0-ptr >>A0
-	moveq #8,d5
+	move.l a1,a0
+	moveq #9-1,d5
 ._ND1:	move.l (a2)+,d1
 
-	moveq #"0",d2
+	moveq #0,d2
+.dl:
 	sub.l d1,d0
-	bmi.s ._ND2
-
+	blo.s .ddone
 	addq.b #1,d2
+	cmp.b d6,d2
+	blo.s .dl
 	sub.l d1,d0
-	bmi.s ._ND2
-	addq.b #1,d2
-	sub.l d1,d0
-	bmi.s ._ND2
-	addq.b #1,d2
-	sub.l d1,d0
-	bmi.s ._ND2
-	addq.b #1,d2
-	sub.l d1,d0
-	bmi.s ._ND2
-	addq.b #1,d2
-	sub.l d1,d0
-	bmi.s ._ND2
-	addq.b #1,d2
-	sub.l d1,d0
-	bmi.s ._ND2
-	addq.b #1,d2
-	sub.l d1,d0
-	bmi.s ._ND2
-	addq.b #1,d2
-	sub.l d1,d0
-	bmi.s ._ND2
-
-	addq.b #1,d2
-	sub.l d1,d0
-
-._ND2:	add.l d1,d0			;"restore" to above-0
+.ddone:
+	add.b d4,d2
 	move.b d2,(a1)+
+
+	add.l d1,d0			;"restore" to above-0
+
 	or.b d2,d3
 	cmp.b d4,d3
 	bne.s ._ND3
 	move.l a1,a0
 ._ND3:	dbf d5,._ND1
-	add.b d4,d0
-	cmp.b d4,d3
-	bne.s ._ND4
-	move.l a1,a0
-._ND4:	move.b d0,(a1)+
+
+	add.b d4,d0			;remainder=last digit
+	move.b d0,(a1)+
 	clr.b (a1)			;0-terminated!
-	move.l a1,d0			;@new code
-	sub.l a0,d0			;@to calc len
-	MOVEM.L (SP)+,D2-D5/A2
+	move.l a1,d0
+	sub.l a0,d0
+	MOVEM.L (SP)+,D4-D6/A2
 	RTS				;a0=1st-non0-ptr,a1=0-term-ptr, d0=len
+
 MAK_DecTbl:dc.l 10^9,10^8,10^7,10^6,10^5,10^4,10^3,100,10
-MAK_NDs:	ENDC
+MAK_NDs:
+	ENDC
 	ENDM				;A0=1st-non0-ptr,A1=0-term-ptr
 
 
