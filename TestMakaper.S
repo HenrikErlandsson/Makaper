@@ -2,11 +2,12 @@
 
 	*===============================================.
 	;						|
-	* 		Makaper "Unit" Test		(
+	; 		Makaper "Unit" Test		(
 	;						|
 	*-----------------------------------------------+
 	; by Photon of Scoopex © 2025 Henrik Erlandsson	|
 	*=========#=====================================#
+	; 1.3	  | Dynamic INIT,OPENLIBS,CALL+MAK_move	|
 	; 1.2	  | Cleanup, better & more tests	|
 	; 1.1	  | Initial release			|
 	; 0.8	  | Adding avail, alloc, free, search	|
@@ -24,23 +25,27 @@
 ;Note: Every (non-init/exit) macro is tested twice to test every line of code 
 ;in the include.
 
-;This means all you need can be built by cut/paste of lines from this source.
+;All you need can be built by cut/paste of lines from this source.
 
-MAK_Libs	=%111111	;Expansion,MathFFP,Layers,Gfx,Intuition,Dos
-MAK_MaxParams	=8
-MAK_TxtBufSize	=80
+;Constants in this source are only needed by the test, not by Makaper.
+;If you write a program from scratch, you must declare global label R,
+;and between MAK_INIT and MAK_CLOSELIBS preserve the address to it in a5.
+
+MaxParams	=1
+TxtBufSize	=80
+EAvailMem	=-216
 
 	INCLUDE "Makaper.S"
 R:
 
     *--- Typical startup ---*
 
-	MAK_INIT
+	MAK_INIT TxtBufSize,"Usage: Copy test.txt to exe folder."
 	MAK_FAKEPARAM "nonsense"
-	MAK_GETPARAMS a0,#8
+	MAK_GETPARAMS a0,MaxParams
 	beq.w CRIT
 
-	MAK_OPENLIBS
+	MAK_OPENLIBS dos
 	beq.w DONE			;demo 0-ptr tolerance
 	MAK_IO
 ;	beq.s EXIT			;no OutHdl (0 = > NIL: so OK)
@@ -130,7 +135,7 @@ Lock1:
 
 	lea 8(a2),a0
 	lea MAK_TxtBuf-R(A5),a1
-	clr.b MAK_TxtBufSize-1(a0)		;ensure fits in buf
+	clr.b TxtBufSize-1(a0)			;ensure fits in buf
 	MAK_COPYS a0,a1
 	MAK_WRITELNA #MAK_TxtBuf
 
@@ -148,7 +153,7 @@ Lock2:
 
 	lea 8(a2),a0
 	lea MAK_TxtBuf-R(A5),a1
-	clr.b MAK_TxtBufSize-1(a0)		;ensure fits in buf
+	clr.b TxtBufSize-1(a0)			;ensure fits in buf
 	MAK_COPYS a0,a1
 	MAK_WRITELNA #MAK_TxtBuf
 
@@ -176,6 +181,20 @@ AllocErr4:			;label moved here to demo 0-ptr tolerance
 
 	MAK_AVAIL 0				;_Any
 	MAK_AVAIL $20002			;_Largest+_Chip
+
+    *--- equivalents of above using MAK_move, MAK_CALL ---*
+	MAK_move.w #0,d1
+	MAK_CALL exec,EAvailMem			;don't store result
+MoveCallTest:
+	moveq #2,d1
+	MAK_move.w #0,d1,#1,d2,#3,d7,#4,a0	;full test again
+	MAK_CALL exec,EAvailMem			;don't store result
+
+	MAK_move.l #$20002,d1
+	MAK_CALL exec,EAvailMem,FileLen-R(A5)
+
+	MAK_move.l #$20002,d1,#1,d2,#3,d7,#4,a0	;full test again
+	MAK_CALL exec,EAvailMem,FileLen-R(A5)
 
 	MAK_SEARCH #FileName,#FileNameE,#SearchStr
 	beq.s NotFound1

@@ -7,19 +7,24 @@
 	*-----------------------------------------------+
 	; by Photon of Scoopex © 2025 Henrik Erlandsson	|
 	*=========#=====================================#
+	; 1.3:	  | Dynamic INIT,OPENLIBS,CALL+MAK_move	|
 	; 1.2:	  | Size opti & improve NUMDECf		|
 	; 1.1:	  | Refactor, bugfix WRITEF, added COPYS|
 	*---------+-------------------------------------*
 	; Notes: /
 	*-------*
 
-;A mini macro language for OS functions w/ no dependendies*, includable
-;anywhere. Always distribute with TestMakaper.S to "unit" test each release!
+;A mini macro language for OS functions with zero dependendies*, includable
+;anywhere. Always distribute with TestMakaper.S and test.txt to "unit" test 
+;each release!
 
 ;Use it to have common OS functions optional yet always at hand for things
-;like CLI/Shell, I/O, file/string/number processing.
+;like CLI/Shell, I/O, file/string/number processing, and quick and easy
+;calls with any library.
 
 ;Features:
+; - Dynamic init, opening and closing of libraries, and lib calls.
+; - One-liner loading of multiple registers.
 ; - Fewer lines of more readable code for common, dull tasks.
 ; - Does not add any code/modify the binary unless a function is used.
 ; - Has reasonably (size) optimized code.
@@ -27,42 +32,108 @@
 ;   cleanup/non-guru exit with multiple deallocs on the same alloc. It's on you
 ;   to clear ptrs/handles etc if you clean up before handling exit conditions.
 
-;* MAK_Libs required if MAK_OPENLIBS used.
-;Bits 5-0=Expansion,MathFFP,Layers,Gfx,Intuition,Dos
-;MAK_MaxParams determines max # of recognized parameters.
-;MAK_TxtBufSize determines buffer size for text operations.
+;MAK_GETPARAMS takes parameter for max # of recognized parameters.
+;MAK_INIT takes parameter for buffer size for text operations, with optional
+;parameter to initialize the buffer with some useful text.
+
+;* Declare global label R at maximum distance 32766 from start of program to
+;maximize all PC-relative addressing modes for an executable of up to 64K.
 
 ;Follows OS standard of preserving d4-d7/a2-a6 where applicable.
-;a5=R for PC-relativism
+;a5=global label R (for PC-relative code)
 ;a6=Execbase
-;^ these are set automatically by MAK_INIT, MAK_CALL, and MAK_CloseLibs.
+;^ these are set automatically by MAK_INIT and MAK_CloseLibs. Between these
+;calls, YOU are responsible for preserving them (normally only a5)!
 
-MAK_CALL:MACRO				;libshort,offset
-	lea R(PC),a5
-	IFNC \1,Exec
+;MAK_move is intended for use together with MAK_CALL to compact the number
+;of code lines for typical library calls by a factor of up to 7:2.
+
+MAK_move.w:MACRO	;value,reg[,value,reg...] (data regs .w)
+	IFGE ($\2-$d0)
+	move.w \1,\2
+	ELSE
+	move.l \1,\2
+	ENDC
+
+	IFNB \3
+	IFGE ($\4-$d0)
+	move.w \3,\4
+	ELSE
+	move.l \3,\4
+	ENDC
+	ENDC
+
+	IFNB \5
+	IFGE ($\6-$d0)
+	move.w \5,\6
+	ELSE
+	move.l \5,\6
+	ENDC
+	ENDC
+
+	IFNB \7
+	IFGE ($\8-$d0)
+	move.w \7,\8
+	ELSE
+	move.l \7,\8
+	ENDC
+	ENDC
+	ENDM
+
+
+MAK_move.l:MACRO	;value,reg[,value,reg...] (data regs .w)
+	move.l \1,\2
+
+	IFNB \3
+	move.l \3,\4
+	ENDC
+
+	IFNB \5
+	move.l \5,\6
+	ENDC
+
+	IFNB \7
+	move.l \7,\8
+	ENDC
+	ENDM
+
+
+MAK_CALL:MACRO				;libname,offset[,result dst .l]
+	IFNC \1,exec
 	move.l MAK_\1Base-R(a5),a6
 	ELSE
 	move.l 4.w,a6
 	ENDC
 	jsr \2(a6)
-	IFNC \1,Exec
+	IFNC \1,exec
 	move.l 4.w,a6
 	ENDC
+
+	IFNB \3
+	move.l d0,\3
+	ELSE
 	tst.l d0
+	ENDC
 	ENDM				;D0 TESTED AT EXIT!
 
 
-MAK_INIT:MACRO				;inits dc.w's
+MAK_INIT:MACRO				;TxtBuf size[,arbitrary string]
 	lea R(PC),a5			;base reg (for opti)(MAX 64K CODE!)
 	move.l 4.w,a6
 	clr.b -1(a0,d0.w)		;make asciiz
-	move.l a0,MAK_Param-R(A5)	;Paramstr ptr
+	move.l a0,MAK_ParamP-R(A5)	;Paramstr ptr
 	bra.s MAK_INITs
-MAK_Param:	dc.l 0
-MAK_InHdl:	dc.l 0			;handle for READLN
-MAK_OutHdl:	dc.l 0			;handle for WRITELN
-MAK_TxtBuf:	dcb.b MAK_TxtBufSize,0
-		dc.b 0			;ensure ASCIIZ
+MAK_ParamP:	dc.l 0
+MAK_InHdl:	dc.l 0			;handle for e.g. MAK_READLN
+MAK_OutHdl:	dc.l 0			;handle for e.g. MAK_WRITELN
+MAK_TxtBuf:
+	IFNB \2
+	dc.b \2			
+	ENDC
+MAK_TxtMsgE:
+	dcb.b (\1-(MAK_TxtMsgE-MAK_TxtBuf)),0
+	dc.b 0			;ensure ASCIIZ
+MAK_TxtBufE:
 	EVEN
 MAK_INITs:
 	ENDM
@@ -80,11 +151,11 @@ MAK_FAKEPARAM:MACRO			;"string". Fakes a DOS ParamStr.
 
 
 MAK_GP:SET 0
-MAK_GETPARAMS:MACRO		;#ParamLine(->ASCIIZ),#Max nr of Params
+MAK_GETPARAMS:MACRO		;#ParamLine(->ASCIIZ),Max no. of Params
 	IFNC \1,a0
 	move.l \1,a0
 	ENDC
-	moveq \2-1,d0
+	moveq #\2-1,d0
 	IF MAK_GP=1
 	jsr MAK_GETPARAMSf-R(A5)
 	ELSE
@@ -109,7 +180,7 @@ MAK_GETPARAMSf:
 	cmp.l d2,a0
 	beq.s ._GP4			;if MAK_Paramlen=0, don't count this
 	move.l d2,(a1)+
-._GP4:	clr.b (a0)+			;terminate MAK_Param string
+._GP4:	clr.b (a0)+			;terminate MAK_ParamP string
 	cmp.b #10,d1
 	beq.s .done
 	tst.b d1
@@ -121,99 +192,164 @@ MAK_GETPARAMSf:
 	asr.w #2,d0
 	RTS
 MAK_Params:
-	dcb.l MAK_MaxParams,0		;max n Params (ptrs)
+	dcb.l \2,0			;max n Params (ptrs)
 MAK_GPs:
 	ENDC
 	ENDM				;(EQ=NONE), D0=NR OF ParamS FOUND
 
 
-MAK_OPENLIBS:MACRO	;SET MAK_Libs !! -> d0=0 if error else last libbase.
-
+MAK_OPENLIBS:MACRO	;up to 9 libnames -> d0=0 if error else last libbase.
+.n:	SET 0
 	lea MAK_LibBases-R(a5),a2
-	IFNE MAK_Libs&1
-	lea MAK_DosName-R(A5),a1
-	bsr.s ._OL1
-	ENDC
-	IFNE MAK_Libs&2
-	lea MAK_IntName-R(A5),a1
-	bsr.s ._OL1
-	ENDC
-	IFNE MAK_Libs&4
-	lea MAK_GfxName-R(A5),a1
-	bsr.s ._OL1
-	ENDC
-	IFNE MAK_Libs&8
-	lea MAK_LayName-R(A5),a1
-	bsr.s ._OL1
-	ENDC
-	IFNE MAK_Libs&16
-	lea MAK_MathFName-R(A5),a1
-	bsr.s ._OL1
-	ENDC
-	IFNE MAK_Libs&32
-	lea MAK_ExpName-R(A5),a1
+	IFNB \1
+.n:	SET .n+1
+	lea MAK_\1Name-R(A5),a1
 	bsr.s ._OL1
 	ENDC
 
+	IFNB \2
+.n:	SET .n+1
+	lea MAK_\2Name-R(A5),a1
+	bsr.s ._OL1
+	ENDC
+
+	IFNB \3
+.n:	SET .n+1
+	lea MAK_\3Name-R(A5),a1
+	bsr.s ._OL1
+	ENDC
+
+	IFNB \4
+.n:	SET .n+1
+	lea MAK_\4Name-R(A5),a1
+	bsr.s ._OL1
+	ENDC
+
+	IFNB \5
+.n:	SET .n+1
+	lea MAK_\5Name-R(A5),a1
+	bsr.s ._OL1
+	ENDC
+
+	IFNB \6
+.n:	SET .n+1
+	lea MAK_\6Name-R(A5),a1
+	bsr.s ._OL1
+	ENDC
+
+	IFNB \7
+.n:	SET .n+1
+	lea MAK_\7Name-R(A5),a1
+	bsr.s ._OL1
+	ENDC
+
+	IFNB \8
+.n:	SET .n+1
+	lea MAK_\8Name-R(A5),a1
+	bsr.s ._OL1
+	ENDC
+
+	IFNB \9
+.n:	SET .n+1
+	lea MAK_\9Name-R(A5),a1
+	bsr.s ._OL1
+	ENDC
 ._OL2:
 	tst.l d0
 
-.l=MAK_Libs				;count lib bits set
-.n=(.l>>5)&1+(.l>>4)&1+(.l>>3)&1+(.l>>2)&1+(.l>>1)&1+.l&1
 	IF .n>4
 	BRA MAK_OLs
 	ELSE
 	BRA.S MAK_OLs
 	ENDC
 
-._OL1:	jsr -408(a6)			;OldOpen
+._OL1:	jsr -408(a6)			;OldOpenLibrary
 	move.l d0,(a2)+
 	beq.s ._OL3
 	RTS
 ._OL3:	addq.w #4,SP			;emulate rts
 	bra.s ._OL2
+
 MAK_LibBases:
-	IFNE MAK_Libs&1
-MAK_DosBase:dc.l 0
-	ENDC
-	IFNE MAK_Libs&2
-MAK_IntBase:dc.l 0
-	ENDC
-	IFNE MAK_Libs&4
-MAK_GfxBase:dc.l 0
-	ENDC
-	IFNE MAK_Libs&8
-MAK_LayBase:dc.l 0
-	ENDC
-	IFNE MAK_Libs&16
-MAK_MathFBase:dc.l 0
-	ENDC
-	IFNE MAK_Libs&32
-MAK_ExpBase:dc.l 0
+	IFNB \1
+MAK_\1Base:dc.l 0
 	ENDC
 
-	IFNE MAK_Libs&1
-MAK_DosName:dc.b "dos.library",0
+	IFNB \2
+MAK_\2Base:dc.l 0
+	ENDC
+
+	IFNB \3
+MAK_\3Base:dc.l 0
+	ENDC
+
+	IFNB \4
+MAK_\4Base:dc.l 0
+	ENDC
+
+	IFNB \5
+MAK_\5Base:dc.l 0
+	ENDC
+
+	IFNB \6
+MAK_\6Base:dc.l 0
+	ENDC
+
+	IFNB \7
+MAK_\7Base:dc.l 0
+	ENDC
+
+	IFNB \8
+MAK_\8Base:dc.l 0
+	ENDC
+
+	IFNB \9
+MAK_\9Base:dc.l 0
+	ENDC
+MAK_LibBasesE:
+
+	IFNB \1
+MAK_\1Name:dc.b "\1.library",0
 	EVEN
 	ENDC
-	IFNE MAK_Libs&2
-MAK_IntName:dc.b "intuition.library",0
+
+	IFNB \2
+MAK_\2Name:dc.b "\2.library",0
 	EVEN
 	ENDC
-	IFNE MAK_Libs&4
-MAK_GfxName:dc.b "graphics.library",0
+
+	IFNB \3
+MAK_\3Name:dc.b "\3.library",0
 	EVEN
 	ENDC
-	IFNE MAK_Libs&8
-MAK_LayName:dc.b "layers.library",0
+
+	IFNB \4
+MAK_\4Name:dc.b "\4.library",0
 	EVEN
 	ENDC
-	IFNE MAK_Libs&16
-MAK_MathFName:dc.b "mathffp.library",0
+
+	IFNB \5
+MAK_\5Name:dc.b "\5.library",0
 	EVEN
 	ENDC
-	IFNE MAK_Libs&32
-MAK_ExpName:dc.b "expansion.library",0
+
+	IFNB \6
+MAK_\6Name:dc.b "\6.library",0
+	EVEN
+	ENDC
+
+	IFNB \7
+MAK_\7Name:dc.b "\7.library",0
+	EVEN
+	ENDC
+
+	IFNB \8
+MAK_\8Name:dc.b "\8.library",0
+	EVEN
+	ENDC
+
+	IFNB \9
+MAK_\9Name:dc.b "\9.library",0
 	EVEN
 	ENDC
 
@@ -226,9 +362,7 @@ MAK_CLOSELIBS:MACRO			;closes any opened libs
 	lea R(PC),a5
 	move.l 4.w,a6
 	lea MAK_LibBases-R(a5),a2
-.l=MAK_Libs				;count lib bits set
-.n=(.l>>5)&1+(.l>>4)&1+(.l>>3)&1+(.l>>2)&1+(.l>>1)&1+.l&1
-	moveq #.n-1,d4
+	moveq #(MAK_LibBasesE-MAK_LibBases)>>2-1,d4
 ._CLl:	move.l (a2)+,d0
 	beq.s ._CLn
 	move.l d0,a1
@@ -239,16 +373,15 @@ MAK_CLOSELIBS:MACRO			;closes any opened libs
 
 
 MAK_IO:	MACRO
-	move.l MAK_DosBase-R(A5),a6
+	move.l MAK_dosBase-R(A5),a6
 	beq.s .err
-	MAK_CALL Dos,-54		;DInput
+	MAK_CALL dos,-54		;DInput
 	move.l d0,MAK_InHdl-R(A5)
-	MAK_CALL Dos,-60		;DOutput
+	MAK_CALL dos,-60		;DOutput
 	move.l d0,MAK_OutHdl-R(A5)
 .err:	
 	move.l 4.w,a6
 	ENDM				;EQ=no OutHdl
-
 
 
 MAK_LK:	SET 0
@@ -267,7 +400,7 @@ MAK_LK:	SET 1
 	bra.s MAK_LKs
 MAK_LOCKf:
 	MOVE.L A6,-(SP)
-	move.l MAK_DosBase-R(a5),a6
+	move.l MAK_dosBase-R(a5),a6
 	move.l d0,d2
 	jsr -84(a6)			;Lock
 	MOVE.L (SP)+,A6
@@ -275,7 +408,6 @@ MAK_LOCKf:
 MAK_LKs:
 	ENDC
 	ENDM				;D0=lock (0=ERROR)
-
 
 
 MAK_UL:SET 0
@@ -291,7 +423,7 @@ MAK_UL:SET 1
 	bra.s MAK_ULs
 MAK_UNLOCKf:
 	MOVE.L A6,-(SP)
-	move.l MAK_DosBase-R(a5),a6
+	move.l MAK_dosBase-R(a5),a6
 	jsr -90(a6)			;UnLock
 	MOVE.L (SP)+,A6
 	RTS
@@ -316,7 +448,7 @@ MAK_XM:SET 1
 	bra.s MAK_XMs
 MAK_EXAMINEf:
 	MOVE.L A6,-(SP)
-	move.l MAK_DosBase-R(a5),a6
+	move.l MAK_dosBase-R(a5),a6
 	move.l d0,d2
 	jsr -102(a6)			;Examine
 	MOVE.L (SP)+,A6
@@ -345,7 +477,7 @@ MAK_OF:SET 1
 MAK_OPENFf:
 
 	MOVEM.L D2/A6,-(SP)
-	move.l MAK_DosBase-R(A5),a6
+	move.l MAK_dosBase-R(A5),a6
 	moveq #0,d2
 	move.w d0,d2
 	jsr -30(a6)			;open
@@ -370,7 +502,7 @@ MAK_CF:	SET 1
 	bsr.s MAK_CLOSEFf
 	bra.s MAK_CFs
 MAK_CLOSEFf:
-	MAK_CALL Dos,-36
+	MAK_CALL dos,-36
 	RTS
 MAK_CFs:
 	ENDC
@@ -396,7 +528,7 @@ MAK_RF:SET 1
 	bra.s MAK_RFs
 MAK_READFf:
 	MOVEM.L D2-D3/A0/A6,-(SP)
-	move.l MAK_DosBase-R(A5),a6
+	move.l MAK_dosBase-R(A5),a6
 	move.l d0,d2
 	move.l a0,d3
 	jsr -42(a6)			;read
@@ -406,7 +538,6 @@ MAK_READFf:
 MAK_RFs:
 	ENDC
 	ENDM				;(NE=ERROR!),D0=#BYTES ACTUALLY READ!
-
 
 
 MAK_RL:SET 0
@@ -433,7 +564,6 @@ MAK_RLs:
 	ENDM				;D0=#BYTES READ (LE=ERROR!)
 
 
-
 MAK_WF:SET 0
 MAK_WRITEF:MACRO			;#Handle,#Addr,#Len
 	IFNC \1,d1
@@ -453,7 +583,7 @@ MAK_WF:SET 1
 	bra.s MAK_WFs
 MAK_WRITEFf:
 	MOVEM.L D3/A6,-(SP)
-	move.l MAK_DosBase-R(A5),a6
+	move.l MAK_dosBase-R(A5),a6
 	jsr -48(a6)			;write
 	MOVEM.L (SP)+,D3/A6
 	cmp.l d3,d0
@@ -461,7 +591,6 @@ MAK_WRITEFf:
 MAK_WFs:
 	ENDC
 	ENDM				;(NE=ERROR!),D0=#BYTES ACTUALLY WRITTEN
-
 
 
 MAK_WRITE:MACRO				;"Text" or Ascii-byte
@@ -473,7 +602,6 @@ MAK_WR1\@:
 	lea MAK_WR2\@-R(A5),a1
 	MAK_WRITEF MAK_OutHdl-R(A5),a1,#MAK_WR3\@-MAK_WR2\@
 	ENDM				;D0=#BYTES ACTUALLY WRITTEN (LE=ERROR!)
-
 
 
 MAK_WRITELN:MACRO			;"Text" or Ascii-byte
@@ -592,7 +720,7 @@ MAK_LD:SET 1
 MAK_LOADFf:
 	MOVEM.L D2-D7/A2-A4/A6,-(SP)
 	move.l 4.w,a6
-	move.l MAK_DosBase-R(a5),a4
+	move.l MAK_dosBase-R(a5),a4
 	moveq #-1,d6			;error-reg (- = allocErr!)
 	move.l d0,a3			;nameadr
 	move.l d1,a2			;memtype!
@@ -700,12 +828,13 @@ MAK_FR:SET 1
 	bsr.s MAK_FREEf
 	bra.s MAK_FRs
 MAK_FREEf:
-	MAK_CALL Exec,-210		;EFreeMem
+	MAK_CALL exec,-210		;EFreeMem
 	RTS
 MAK_FRs:
 	ENDC
 MAK_FRskip\@:
 	ENDM
+
 
 MAK_AV:SET 0
 MAK_AVAIL:MACRO				;Type (No "#" !!)
