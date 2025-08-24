@@ -7,6 +7,8 @@
 	*-----------------------------------------------+
 	; by Photon of Scoopex © 2025 Henrik Erlandsson	|
 	*=========#=====================================#
+	; 1.5	  | Test optional resultVars		|
+	; 1.4	  | Handle missing test.txt, flow fixes	|
 	; 1.3	  | Dynamic INIT,OPENLIBS,CALL+MAK_move	|
 	; 1.2	  | Cleanup, better & more tests	|
 	; 1.1	  | Initial release			|
@@ -25,7 +27,7 @@
 ;Note: Every (non-init/exit) macro is tested twice to test every line of code 
 ;in the include.
 
-;All you need can be built by cut/paste of lines from this source.
+;All you need can be built by cut/paste of chunks from this source.
 
 ;Constants in this source are only needed by the test, not by Makaper.
 ;If you write a program from scratch, you must declare global label R,
@@ -50,8 +52,9 @@ R:
 	MAK_IO
 ;	beq.s EXIT			;no OutHdl (0 = > NIL: so OK)
 
-	MAK_WRITELN "** Starting tests..."
-	MAK_WRITELN
+	MAK_WRITE "** Starting tests..."
+	MAK_WRITEF MAK_outHdl-R(A5),#LineFeed,#1
+	MAK_WRITEF MAK_outHdl-R(A5),#LineFeed,#1,ResultVar
 
     *--- Read a file ---*
 
@@ -72,27 +75,56 @@ Skip:
 
 	lea FileBuf-R(A5),a2
 	MAK_OPENF FileHdl-R(A5),#FileName,#1005	;_Old
-	beq.w Skip
-	MAK_READF FileHdl-R(A5),a2,#FileBufE-FileBuf
-	beq.s FileError
+	beq.w Skip2
+	MAK_READF FileHdl-R(A5),a2,#FileBufE-FileBuf,ResultVar
+	beq.s FileError2
 	clr.b (a2,d0.w)			;Make this ASCIIZ
 
-	MAK_WRITE "File Contents x 2: "
-	MAK_WRITEA a2
-	MAK_WRITELNA a2
+	MAK_WRITE "File Contents x 2: ",ResultVar
+	MAK_WRITEA a2,ResultVar
+	MAK_WRITELNA a2,ResultVar
 
 FileError2:
 	MAK_CLOSEF FileHdl-R(A5)
 Skip2:
 
+	MAK_OPENF FileHdl-R(A5),#FileName,#1005	;_Old
+	beq.w Skip3
+	MAK_READLN FileHdl-R(A5)
+	MAK_CLOSEF FileHdl-R(A5)
+Skip3:
+	MAK_OPENF FileHdl-R(A5),#FileName,#1005	;_Old
+	beq.w Skip4
+	MAK_READLN FileHdl-R(A5)
+	MAK_CLOSEF FileHdl-R(A5)
+Skip4:
+
+
     *--- Load file ---*
 
 	MAK_LOADF #FileName,0			;_Any
 	bmi.w AllocErr
-	beq.w FileErr
 	movem.l d0/a0,FileLen-R(A5)
+	bne.s FileOk
+	MAK_WRITELN "test.txt not found in current folder"
+FileOk:
+	movem.l FileLen-R(A5),d0/a0
+	MAK_FREE a0,d0
+AllocErr:
 
-	MAK_NUMDEC d0,#MAK_TxtBuf
+	MAK_LOADF #FileName,0			;_Any
+	bmi.w AllocErr2
+	movem.l d0/a0,FileLen-R(A5)
+	bne.s FileOk2
+	MAK_WRITELN "test.txt not found in current folder",ResultVar
+FileOk2:
+	movem.l FileLen-R(A5),d0/a0
+	MAK_FREE a0,d0
+AllocErr2:
+
+    *--- Number conversion ---*
+
+	MAK_NUMDEC #14,#MAK_TxtBuf
 	MAK_WRITELNA a0
 	MAK_DECNUM #MAK_TxtBuf
 
@@ -100,28 +132,13 @@ Skip2:
 	MAK_WRITELNA #MAK_TxtBuf		;demo including $ and zeroes
 	MAK_HEXNUM #MAK_TxtBuf
 
-FileErr:
-	movem.l FileLen-R(A5),d0/a0
-	MAK_FREE a0,d0
-AllocErr:
-
-	MAK_LOADF #FileName,0			;_Any
-	bmi.w AllocErr2
-	beq.w FileErr2
-	movem.l d0/a0,FileLen-R(A5)
-
 	MAK_NUMDEC #-1,#MAK_TxtBuf
 	MAK_WRITELNA a0				;demo largest integer conv
-	MAK_DECNUM #MAK_TxtBuf
+	MAK_DECNUM #MAK_TxtBuf,ResultVar
 
 	MAK_NUMHEX #13,#MAK_TxtBuf
 	MAK_WRITELNA a0				;demo min. 2 digits feature
-	MAK_HEXNUM #MAK_TxtBuf
-
-FileErr2:
-	movem.l FileLen-R(A5),d0/a0
-	MAK_FREE a0,d0
-AllocErr2:
+	MAK_HEXNUM #MAK_TxtBuf,ResultVar
 
     *--- Examine file ---*
 
@@ -171,7 +188,7 @@ LockErr2:
 	clr.l AllocP-R(A5)
 AllocErr3:
 
-	MAK_ALLOC #1024,0			;_Any
+	MAK_ALLOC #1024,0,ResultVar		;_Any
 	move.l d0,AllocP-R(A5)
 	beq.s AllocErr4
 	MAK_WRITELN "Alloc 1K OK."
@@ -180,7 +197,7 @@ AllocErr4:			;label moved here to demo 0-ptr tolerance
 	clr.l AllocP-R(A5)
 
 	MAK_AVAIL 0				;_Any
-	MAK_AVAIL $20002			;_Largest+_Chip
+	MAK_AVAIL $20002,ResultVar		;_Largest+_Chip
 
     *--- equivalents of above using MAK_move, MAK_CALL ---*
 	MAK_move.w #0,d1
@@ -225,6 +242,8 @@ FileNameE:
 
 SearchStr:
 	dc.b "t.tx",0
+LineFeed:
+	dc.b 10
 
     *--- Vars ---*
 
@@ -234,6 +253,7 @@ FileHdl:dc.l 0
 FileLen:dc.l 0
 FileAddr:dc.l 0				;must follow FileLen
 FileLock:dc.l 0
+ResultVar:dc.l 0
 
     *--- Buffers ---*
 
