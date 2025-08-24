@@ -15,7 +15,7 @@ A mini macro language for common AmigaOS tasks such as file processing and conve
     INCLUDE "Makaper.S"
 R:
     MAK_INIT 80
-    MAK_OPENLIBS
+    MAK_OPENLIBS dos
     MAK_IO
     MAK_WRITELN "Hello, world!"
     MAK_CLOSELIBS
