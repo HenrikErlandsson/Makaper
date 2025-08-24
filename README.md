@@ -11,6 +11,7 @@ A mini macro language for common AmigaOS tasks such as file processing and conve
 
 ## Gist
 
+```
     INCLUDE "Makaper.S"
 R:
     MAK_INIT 80
@@ -19,6 +20,7 @@ R:
     MAK_WRITELN "Hello, world!"
     MAK_CLOSELIBS
     rts
+```
 
 ## Example use cases
 * As a general wrapper for any utility, or a demo or game that needs loading/processing/saving.
