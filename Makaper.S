@@ -7,6 +7,8 @@
 	*-----------------------------------------------+
 	; by Photon of Scoopex © 2025 Henrik Erlandsson	|
 	*=========#=====================================#
+	; 1.5:	  | Opt. last param autosave-> ResultVar|
+	; 1.4:	  | LOADF error handling fix		|
 	; 1.3:	  | Dynamic INIT,OPENLIBS,CALL+MAK_move	|
 	; 1.2:	  | Size opti & improve NUMDECf		|
 	; 1.1:	  | Refactor, bugfix WRITEF, added COPYS|
@@ -114,6 +116,7 @@ MAK_CALL:MACRO				;libname,offset[,result dst .l]
 	ELSE
 	tst.l d0
 	ENDC
+
 	ENDM				;D0 TESTED AT EXIT!
 
 
@@ -131,8 +134,11 @@ MAK_TxtBuf:
 	dc.b \2			
 	ENDC
 MAK_TxtMsgE:
+	IF (\1-(MAK_TxtMsgE-MAK_TxtBuf))>0
 	dcb.b (\1-(MAK_TxtMsgE-MAK_TxtBuf)),0
+	ELSE
 	dc.b 0			;ensure ASCIIZ
+	ENDC
 MAK_TxtBufE:
 	EVEN
 MAK_INITs:
@@ -373,14 +379,11 @@ MAK_CLOSELIBS:MACRO			;closes any opened libs
 
 
 MAK_IO:	MACRO
-	move.l MAK_dosBase-R(A5),a6
-	beq.s .err
 	MAK_CALL dos,-54		;DInput
 	move.l d0,MAK_InHdl-R(A5)
 	MAK_CALL dos,-60		;DOutput
 	move.l d0,MAK_OutHdl-R(A5)
-.err:	
-	move.l 4.w,a6
+.err:
 	ENDM				;EQ=no OutHdl
 
 
@@ -510,7 +513,7 @@ MAK_CFs:
 
 
 MAK_RF:SET 0
-MAK_READF:MACRO				;#Handle,#Addr,#Len
+MAK_READF:MACRO				;#Handle,#Addr,#Len[,#ResultVar]
 	IFNC \1,d1
 	move.l \1,d1			;file handle
 	ENDC
@@ -537,11 +540,17 @@ MAK_READFf:
 	RTS
 MAK_RFs:
 	ENDC
+
+	IFNB \4
+	move.l d0,\4
+	cmp.l a0,d0
+	ENDC
+
 	ENDM				;(NE=ERROR!),D0=#BYTES ACTUALLY READ!
 
 
 MAK_RL:SET 0
-MAK_READLN:MACRO	;NO ParamS.Reads max 80 bytes to MAK_TxtBuf&clrs last!
+MAK_READLN:MACRO	;[#Handle][,#ResultVar]. Reads to MAK_TxtBuf&clrs last!
 	IF MAK_RL=1
 	jsr MAK_READLNf-R(A5)
 	ELSE
@@ -551,8 +560,16 @@ MAK_RL:SET 1
 MAK_READLNf:
 	MOVEM.L D2/A2,-(SP)
 	lea MAK_TxtBuf-R(a5),a2
-	moveq #40,d2
+	IF (MAK_TxtBufE-MAK_TxtBuf)<128
+	moveq #(MAK_TxtBufE-MAK_TxtBuf),d2
+	ELSE
+	move.l #(MAK_TxtBufE-MAK_TxtBuf),d2
+	ENDC
+	IFNB \1
+	MAK_READF \1,a2,d2
+	ELSE
 	MAK_READF MAK_InHdl-R(a5),a2,d2
+	ENDC
 	cmp.w d2,d0
 	bge.s ._RL1
 	subq.w #1,d0
@@ -561,11 +578,18 @@ MAK_READLNf:
 	RTS
 MAK_RLs:
 	ENDC
+
+	IFNB \2
+	move.l d0,\2
+	ELSE
+	tst.l d0
+	ENDC
+
 	ENDM				;D0=#BYTES READ (LE=ERROR!)
 
 
 MAK_WF:SET 0
-MAK_WRITEF:MACRO			;#Handle,#Addr,#Len
+MAK_WRITEF:MACRO			;#Handle,#Addr,#Len[,#ResultVar]
 	IFNC \1,d1
 	move.l \1,d1			;file handle
 	ENDC
@@ -590,21 +614,32 @@ MAK_WRITEFf:
 	RTS
 MAK_WFs:
 	ENDC
+
+	IFNB \4
+	move.l d0,\4
+	cmp.l d3,d0
+	ENDC
+
 	ENDM				;(NE=ERROR!),D0=#BYTES ACTUALLY WRITTEN
 
 
-MAK_WRITE:MACRO				;"Text" or Ascii-byte
+MAK_WRITE:MACRO				;"Text" or Ascii-byte[,#ResultVar]
 	bra.s MAK_WR1\@
 MAK_WR2\@:	dc.b \1
 MAK_WR3\@:
 	EVEN
 MAK_WR1\@:	
 	lea MAK_WR2\@-R(A5),a1
+	IFNB \2
+	MAK_WRITEF MAK_OutHdl-R(A5),a1,#MAK_WR3\@-MAK_WR2\@,\2
+	ELSE
 	MAK_WRITEF MAK_OutHdl-R(A5),a1,#MAK_WR3\@-MAK_WR2\@
+	ENDC
+
 	ENDM				;D0=#BYTES ACTUALLY WRITTEN (LE=ERROR!)
 
 
-MAK_WRITELN:MACRO			;"Text" or Ascii-byte
+MAK_WRITELN:MACRO			;"Text" or Ascii-byte[,#ResultVar]
 	bra.s MAK_WL1\@
 MAK_WL2\@:
 	IFNB \1
@@ -616,12 +651,17 @@ MAK_WL3\@:
 	EVEN
 MAK_WL1\@:
 	lea MAK_WL2\@-R(A5),a1
+	IFNB \2
+	MAK_WRITEF MAK_OutHdl-R(A5),a1,#MAK_WL3\@-MAK_WL2\@,\2
+	ELSE
 	MAK_WRITEF MAK_OutHdl-R(A5),a1,#MAK_WL3\@-MAK_WL2\@
+	ENDC
+
 	ENDM				;D0=#BYTES ACTUALLY WRITTEN (LE=ERROR!)
 
 
 MAK_WRA:SET 0
-MAK_WRITEA:MACRO			;#TextPtr to 0-terminated string
+MAK_WRITEA:MACRO		;#TextPtr to 0-terminated string,[#ResultVar]
 	IFNC \1,a0
 	move.l \1,a0
 	ENDC
@@ -641,11 +681,17 @@ MAK_WRITEAf:
 	RTS
 MAK_WRAs:
 	ENDC
-	ENDM				;D0=#BYTES ACTUALLY WRITTEN (LE=ERROR!)
+	IFNB \2
+	move.l d0,\2
+	ELSE
+	tst.l d0
+	ENDC
+
+	ENDM				;D0=#BYTES ACTUALLY WRITTEN
 
 
 MAK_WLA:SET 0
-MAK_WRITELNA:MACRO			;#TextPtr to 0-terminated string
+MAK_WRITELNA:MACRO		;#TextPtr to 0-terminated string[,#ResultVar]
 	IFNC \1,a0
 	move.l \1,a0
 	ENDC
@@ -669,7 +715,13 @@ MAK_WRITELNAf:
 	RTS
 MAK_WLAs:
 	ENDC
-	ENDM				;D0=#BYTES ACTUALLY WRITTEN (LE=ERROR!)
+
+	IFNB \2
+	move.l d0,\2
+	ENDC
+
+	ENDM				;D0=#BYTES ACTUALLY WRITTEN
+
 
 MAK_CS:	SET 0	;Copies ASCIIZ string, replacing 0-31/128-159 with space.
 MAK_COPYS:MACRO
@@ -721,13 +773,14 @@ MAK_LOADFf:
 	MOVEM.L D2-D7/A2-A4/A6,-(SP)
 	move.l 4.w,a6
 	move.l MAK_dosBase-R(a5),a4
-	moveq #-1,d6			;error-reg (- = allocErr!)
+	moveq #-1,d6			;default error-reg (- = allocErr!)
 	move.l d0,a3			;nameadr
 	move.l d1,a2			;memtype!
 	move.l #260,d0
 	jsr -198(a6)			;AllocMem
 	move.l d0,d4			;memaddr
-	beq.s ._LDe
+	beq.w ._LDe
+	moveq #0,d6			;no alloc error, default file error
 	move.l a3,d1
 	moveq #-2,d2			;_AccR	
 	exg a4,a6			;switch to DOS!
@@ -741,6 +794,7 @@ MAK_LOADFf:
 	beq.s ._LDu
 	move.l d4,a0
 	move.l 124(a0),d7		;file size!
+	beq.s ._LDu
 	moveq #1,d6			;non-zero -- succeeded!
 ._LDu:	move.l d5,d1
 	jsr -90(a6)			;UnLock
@@ -749,14 +803,15 @@ MAK_LOADFf:
 	move.l d4,a1
 	jsr -210(a6)			;freemem
 	tst.l d6
-	bmi.s ._LDe
+	beq.s ._LDe
 
-	moveq #0,d6			;0=FILEERR!
+	moveq #-2,d6			;-=alloc err
 	move.l d7,d0
 	move.l a2,d1			;memtype
 	jsr -198(a6)			;AllocMem
 	move.l d0,d4			;memaddr
 	beq.s ._LDe
+	moveq #0,d6			;0=FILEERR!
 	exg a4,a6			;DOS!
 	move.l a3,d1
 	move.l #1005,d2
@@ -788,7 +843,7 @@ MAK_LDs:
 
 
 MAK_AL:SET 0
-MAK_ALLOC:MACRO				;#Size,Type(1/2/4/$20000=P/C/F/Largest)
+MAK_ALLOC:MACRO		;#Size,Type(1/2/4/$20000=P/C/F/Largest)[,#ResultVar]
 	IFNC \1,d0
 	move.l \1,d0
 	ENDC
@@ -812,6 +867,11 @@ MAK_ALLOCf:
 	RTS
 MAK_ALs:
 	ENDC
+
+	IFNB \3
+	move.l d0,\3
+	ENDC
+
 	ENDM				;EQ=ERROR,D0=MemAddr
 
 
@@ -837,7 +897,7 @@ MAK_FRskip\@:
 
 
 MAK_AV:SET 0
-MAK_AVAIL:MACRO				;Type (No "#" !!)
+MAK_AVAIL:MACRO			;Type (No "#" !!)[,#ResultVar]
 	IF \1<128
 	moveq #\1,d1
 	ELSE
@@ -857,6 +917,11 @@ MAK_AVAILf:
 	RTS
 MAK_AVs:
 	ENDC
+
+	IFNB \2
+	move.l d0,\2
+	ENDC
+
 	ENDM				;D0=AvailMem
 
 
@@ -964,7 +1029,7 @@ MAK_NDs:
 
 
 MAK_DN:	SET 0
-MAK_DECNUM:MACRO			;#SrcAddr -> d0
+MAK_DECNUM:MACRO			;#SrcAddr[,#ResultVar]
 	IFNC \1,a0
 	move.l \1,a0
 	ENDC
@@ -1026,11 +1091,16 @@ MAK_DECNUMf:		;a0=src text, end with 10 or 0 ->d0=number (-1=err)
 	RTS
 MAK_DNs:
 	ENDC
-	ENDM				;A0=1st-non0-ptr,A1=0-term-ptr
+
+	IFNB \2
+	move.l d0,\2
+	ENDC
+
+	ENDM				;d0=number
 
 
 MAK_HN:	SET 0
-MAK_HEXNUM:MACRO			;#SrcAddr -> d0
+MAK_HEXNUM:MACRO			;#SrcAddr[,#ResultVar]
 	IFNC \1,a0
 	move.l \1,a0
 	ENDC
@@ -1092,7 +1162,12 @@ MAK_HEXNUMf:		;a0=src text, end with 10 or 0 ->d0=number (-1=err)
 	RTS
 MAK_HNs:
 	ENDC
-	ENDM				;A0=1st-non0-ptr,A1=0-term-ptr
+
+	IFNB \2
+	move.l d0,\2
+	ENDC
+
+	ENDM				;d0=number
 
 
 MAK_SR:SET 0
@@ -1139,5 +1214,5 @@ MAK_SEARCHf:
 	tst.w d0
 	RTS
 MAK_SRs:
-	ENDC			;EQ=NOT FOUND, D0=len of string,A0=ADDR+1 !!
-	ENDM			;YOU CAN USE BOTH D0.W AND D0.L !!
+	ENDC ;EQ=NOT FOUND, D0=strlen,A0=addr+1 (for cont. search),A1=ADDR
+	ENDM			;YOU CAN USE BOTH D0.W AND D0.L
