@@ -7,6 +7,7 @@
 	*-----------------------------------------------+
 	; by Photon of Scoopex © 2025 Henrik Erlandsson	|
 	*=========#=====================================#
+	; 1.6:	  | Remove empty line before ENDM	|
 	; 1.5:	  | Opt. last param autosave-> ResultVar|
 	; 1.4:	  | LOADF error handling fix		|
 	; 1.3:	  | Dynamic INIT,OPENLIBS,CALL+MAK_move	|
@@ -116,7 +117,6 @@ MAK_CALL:MACRO				;libname,offset[,result dst .l]
 	ELSE
 	tst.l d0
 	ENDC
-
 	ENDM				;D0 TESTED AT EXIT!
 
 
@@ -545,7 +545,6 @@ MAK_RFs:
 	move.l d0,\4
 	cmp.l a0,d0
 	ENDC
-
 	ENDM				;(NE=ERROR!),D0=#BYTES ACTUALLY READ!
 
 
@@ -584,7 +583,6 @@ MAK_RLs:
 	ELSE
 	tst.l d0
 	ENDC
-
 	ENDM				;D0=#BYTES READ (LE=ERROR!)
 
 
@@ -619,7 +617,6 @@ MAK_WFs:
 	move.l d0,\4
 	cmp.l d3,d0
 	ENDC
-
 	ENDM				;(NE=ERROR!),D0=#BYTES ACTUALLY WRITTEN
 
 
@@ -635,7 +632,6 @@ MAK_WR1\@:
 	ELSE
 	MAK_WRITEF MAK_OutHdl-R(A5),a1,#MAK_WR3\@-MAK_WR2\@
 	ENDC
-
 	ENDM				;D0=#BYTES ACTUALLY WRITTEN (LE=ERROR!)
 
 
@@ -656,7 +652,6 @@ MAK_WL1\@:
 	ELSE
 	MAK_WRITEF MAK_OutHdl-R(A5),a1,#MAK_WL3\@-MAK_WL2\@
 	ENDC
-
 	ENDM				;D0=#BYTES ACTUALLY WRITTEN (LE=ERROR!)
 
 
@@ -686,7 +681,6 @@ MAK_WRAs:
 	ELSE
 	tst.l d0
 	ENDC
-
 	ENDM				;D0=#BYTES ACTUALLY WRITTEN
 
 
@@ -719,7 +713,6 @@ MAK_WLAs:
 	IFNB \2
 	move.l d0,\2
 	ENDC
-
 	ENDM				;D0=#BYTES ACTUALLY WRITTEN
 
 
@@ -871,7 +864,6 @@ MAK_ALs:
 	IFNB \3
 	move.l d0,\3
 	ENDC
-
 	ENDM				;EQ=ERROR,D0=MemAddr
 
 
@@ -921,7 +913,6 @@ MAK_AVs:
 	IFNB \2
 	move.l d0,\2
 	ENDC
-
 	ENDM				;D0=AvailMem
 
 
@@ -1095,7 +1086,6 @@ MAK_DNs:
 	IFNB \2
 	move.l d0,\2
 	ENDC
-
 	ENDM				;d0=number
 
 
@@ -1166,7 +1156,6 @@ MAK_HNs:
 	IFNB \2
 	move.l d0,\2
 	ENDC
-
 	ENDM				;d0=number
 
 
