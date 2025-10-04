@@ -7,6 +7,7 @@
 	*-----------------------------------------------+
 	; by Photon of Scoopex © 2025 Henrik Erlandsson	|
 	*=========#=====================================#
+	; 1.6	  | Correct Init/FakeparamS order	|
 	; 1.5	  | Test optional resultVars		|
 	; 1.4	  | Handle missing test.txt, flow fixes	|
 	; 1.3	  | Dynamic INIT,OPENLIBS,CALL+MAK_move	|
@@ -42,8 +43,8 @@ R:
 
     *--- Typical startup ---*
 
+	MAK_FAKEPARAMS "nonsense"
 	MAK_INIT TxtBufSize,"Usage: Copy test.txt to exe folder."
-	MAK_FAKEPARAM "nonsense"
 	MAK_GETPARAMS a0,MaxParams
 	beq.w CRIT
 

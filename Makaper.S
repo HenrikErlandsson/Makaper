@@ -7,6 +7,7 @@
 	*-----------------------------------------------+
 	; by Photon of Scoopex © 2025 Henrik Erlandsson	|
 	*=========#=====================================#
+	; 1.7:	  | Handle 1 param and params with "	|
 	; 1.6:	  | Remove empty line before ENDM	|
 	; 1.5:	  | Opt. last param autosave-> ResultVar|
 	; 1.4:	  | LOADF error handling fix		|
@@ -18,7 +19,7 @@
 	*-------*
 
 ;A mini macro language for OS functions with zero dependendies*, includable
-;anywhere. Always distribute with TestMakaper.S and test.txt to "unit" test 
+;anywhere. Always distribute with TestMakaper.S and test.txt to "unit" test
 ;each release!
 
 ;Use it to have common OS functions optional yet always at hand for things
@@ -123,7 +124,7 @@ MAK_CALL:MACRO				;libname,offset[,result dst .l]
 MAK_INIT:MACRO				;TxtBuf size[,arbitrary string]
 	lea R(PC),a5			;base reg (for opti)(MAX 64K CODE!)
 	move.l 4.w,a6
-	clr.b -1(a0,d0.w)		;make asciiz
+;	move.b #" ",-1(a0,d0.w)		;make consistent. is asciiz.
 	move.l a0,MAK_ParamP-R(A5)	;Paramstr ptr
 	bra.s MAK_INITs
 MAK_ParamP:	dc.l 0
@@ -131,7 +132,7 @@ MAK_InHdl:	dc.l 0			;handle for e.g. MAK_READLN
 MAK_OutHdl:	dc.l 0			;handle for e.g. MAK_WRITELN
 MAK_TxtBuf:
 	IFNB \2
-	dc.b \2			
+	dc.b \2
 	ENDC
 MAK_TxtMsgE:
 	IF (\1-(MAK_TxtMsgE-MAK_TxtBuf))>0
@@ -145,8 +146,9 @@ MAK_INITs:
 	ENDM
 
 
-MAK_FAKEPARAM:MACRO			;"string". Fakes a DOS ParamStr.
-	lea ._Fake-R(A5),a0		;PC because R not inited yet !!
+;The only Makaper macro that can be called before MAK_INIT
+MAK_FAKEPARAMS:MACRO			;"string". Fakes a DOS ParamStr.
+	lea ._Fake(PC),a0		;PC because a5 not yet set!
 	moveq #._FakeE-._Fake,d0
 	bra.s ._FPs
 ._Fake:	dc.b \1,10
@@ -155,13 +157,12 @@ MAK_FAKEPARAM:MACRO			;"string". Fakes a DOS ParamStr.
 ._FPs:
 	ENDM
 
-
 MAK_GP:SET 0
 MAK_GETPARAMS:MACRO		;#ParamLine(->ASCIIZ),Max no. of Params
 	IFNC \1,a0
 	move.l \1,a0
 	ENDC
-	moveq #\2-1,d0
+	moveq #\2,d0
 	IF MAK_GP=1
 	jsr MAK_GETPARAMSf-R(A5)
 	ELSE
@@ -170,38 +171,54 @@ MAK_GP:SET 1
 	bra.s MAK_GPs
 
 MAK_GETPARAMSf:
-	subq.w #1,d0			;1 less cos extra LF...
+	move.l a2,-(SP)
 	lea MAK_Params-R(a5),a1
-	MOVE.L D2,-(SP)
-	MOVE.W A1,-(SP)
-._GP1:	move.l a0,d2
-._GP2:	move.b (a0)+,d1
-	cmp.b #10,d1			;handle LF
-	beq.s ._GP3
-	cmp.b #" ",d1			;Separators:SPACE
-	beq.s ._GP3
-	cmp.b #",",d1			;or COMMA
+	move.w d0,d2
+	moveq #0,d0			;#actual params
+._GP1:
+	move.l a0,a2			;param start ptr
+	moveq #0,d3			;reset quote flag
+._GP2:
+	move.b (a0)+,d1
+	beq.s ._GPdone			;error (in this loop), quit
+	cmp.b #34,d1			;quote toggles quote flag
+	bne.s .GP_noq0
+	not.w d3
+.GP_noq0:
+	tst.w d3			;quote flag set? then ignore space
 	bne.s ._GP2
-._GP3:	subq.w #1,a0
-	cmp.l d2,a0
-	beq.s ._GP4			;if MAK_Paramlen=0, don't count this
-	move.l d2,(a1)+
-._GP4:	clr.b (a0)+			;terminate MAK_ParamP string
-	cmp.b #10,d1
-	beq.s .done
-	tst.b d1
-	dbeq d0,._GP1			;smartie!
-.done:
-	move.l a1,d0
-	SUB.W (SP)+,D0
-	MOVE.L (SP)+,D2
-	asr.w #2,d0
-	RTS
+	cmp.b #" ",d1			;space or below?
+	bhi.s ._GP2			;no, keep reading param chars
+._GP3:
+	subq.w #1,a0			;stop ptr of param (space/LF)
+	cmp.l a2,a0
+	beq.s ._GPparamDone		;if param len=0, don't count it.
+	cmp.b #34,(a2)			;starts with "? 
+	bne.s ._GPnoq1
+	addq.w #1,a2			;then point to after "
+._GPnoq1:
+	cmp.b #34,-(a0)			;ended with "?
+	bne.s ._GPnoq2
+	clr.b (a0)			;then overwrite " with 0 to terminate
+._GPnoq2:
+	addq.w #1,a0
+	move.l a2,(a1)+			;store pointer
+	addq.w #1,d0			;and increase actual count
+._GPparamDone:
+	clr.b (a0)+			;space/LF -> 0 (terminate param)
+	cmp.b #10,d1			;was separator LF/0, not space?
+	bls.s ._GPdone			;then end of param string.
+	subq.w #1,d2			;else loop until maxparams read.
+	bne.s ._GP1
+._GPdone:
+	move.l (SP)+,a2
+	tst.w d0
+	RTS				;-> d0=#params (EQ=0)
 MAK_Params:
 	dcb.l \2,0			;max n Params (ptrs)
 MAK_GPs:
 	ENDC
-	ENDM				;(EQ=NONE), D0=NR OF ParamS FOUND
+	ENDM				;(EQ=NONE), D0.l=actual #params
 
 
 MAK_OPENLIBS:MACRO	;up to 9 libnames -> d0=0 if error else last libbase.
@@ -625,7 +642,7 @@ MAK_WRITE:MACRO				;"Text" or Ascii-byte[,#ResultVar]
 MAK_WR2\@:	dc.b \1
 MAK_WR3\@:
 	EVEN
-MAK_WR1\@:	
+MAK_WR1\@:
 	lea MAK_WR2\@-R(A5),a1
 	IFNB \2
 	MAK_WRITEF MAK_OutHdl-R(A5),a1,#MAK_WR3\@-MAK_WR2\@,\2
@@ -775,7 +792,7 @@ MAK_LOADFf:
 	beq.w ._LDe
 	moveq #0,d6			;no alloc error, default file error
 	move.l a3,d1
-	moveq #-2,d2			;_AccR	
+	moveq #-2,d2			;_AccR
 	exg a4,a6			;switch to DOS!
 	jsr -84(a6)			;Lock
 	move.l d0,d5
