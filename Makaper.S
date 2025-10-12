@@ -7,6 +7,7 @@
 	*-----------------------------------------------+
 	; by Photon of Scoopex © 2025 Henrik Erlandsson	|
 	*=========#=====================================#
+	; 1.8:	  | Remove unnecessary Execbase reloads	|
 	; 1.7:	  | Handle 1 param and params with "	|
 	; 1.6:	  | Remove empty line before ENDM	|
 	; 1.5:	  | Opt. last param autosave-> ResultVar|
@@ -17,6 +18,11 @@
 	*---------+-------------------------------------*
 	; Notes: /
 	*-------*
+
+;From 1.8, it is assumed that a6 contains execbase, except for MAK_INIT and
+;MAK_CloseLibs. This allows you to write programs just using the OS, then 
+;hop in and out of e.g. a game or other program which trashes the registers, 
+;and still exit soundly.
 
 ;A mini macro language for OS functions with zero dependendies*, includable
 ;anywhere. Always distribute with TestMakaper.S and test.txt to "unit" test
@@ -105,8 +111,6 @@ MAK_move.l:MACRO	;value,reg[,value,reg...] (data regs .w)
 MAK_CALL:MACRO				;libname,offset[,result dst .l]
 	IFNC \1,exec
 	move.l MAK_\1Base-R(a5),a6
-	ELSE
-	move.l 4.w,a6
 	ENDC
 	jsr \2(a6)
 	IFNC \1,exec
@@ -124,7 +128,6 @@ MAK_CALL:MACRO				;libname,offset[,result dst .l]
 MAK_INIT:MACRO				;TxtBuf size[,arbitrary string]
 	lea R(PC),a5			;base reg (for opti)(MAX 64K CODE!)
 	move.l 4.w,a6
-;	move.b #" ",-1(a0,d0.w)		;make consistent. is asciiz.
 	move.l a0,MAK_ParamP-R(A5)	;Paramstr ptr
 	bra.s MAK_INITs
 MAK_ParamP:	dc.l 0
@@ -781,7 +784,6 @@ MAK_LD:SET 1
 	bra MAK_LDs
 MAK_LOADFf:
 	MOVEM.L D2-D7/A2-A4/A6,-(SP)
-	move.l 4.w,a6
 	move.l MAK_dosBase-R(a5),a4
 	moveq #-1,d6			;default error-reg (- = allocErr!)
 	move.l d0,a3			;nameadr
@@ -869,10 +871,7 @@ MAK_AL:SET 1
 	bsr.s MAK_ALLOCf
 	bra.s MAK_ALs
 MAK_ALLOCf:
-	MOVE.L A6,-(SP)
-	move.l 4.w,a6
 	jsr -198(a6)			;AllocMem
-	MOVE.L (SP)+,A6
 	tst.l d0
 	RTS
 MAK_ALs:
@@ -919,10 +918,7 @@ MAK_AV:SET 1
 	bsr.s MAK_AVAILf
 	bra.s MAK_AVs
 MAK_AVAILf:
-	MOVE.L A6,-(SP)
-	move.l 4.w,a6
 	jsr -216(a6)			;AvailMem
-	MOVE.L (SP)+,A6
 	RTS
 MAK_AVs:
 	ENDC
